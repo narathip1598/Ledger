@@ -24,3 +24,9 @@ class Answers(Base):
     id = Column(Integer, primary_key=True, index=True)
     question_id = Column(Integer, ForeignKey('questions.id'))
     choice_id = Column(Integer, ForeignKey('choices.id'))
+    
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)

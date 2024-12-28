@@ -31,9 +31,13 @@ export default {
     };
   },
   mounted() {
+    this.updateTitle(); // Set the page title
     this.fetchQuestions();
   },
   methods: {
+    updateTitle() {
+      document.title = "Quiz Page"; // Set your desired title here
+    },
     async fetchQuestions() {
       try {
         const response = await axios.get('http://localhost:8000/questions'); // Replace with your backend URL
@@ -72,11 +76,10 @@ export default {
           alert('There was an error checking your answers. Please try again.');
         });
     }
-
-
   }
 };
 </script>
+
 
 <style scoped>
 /* Styling remains unchanged from the earlier example */

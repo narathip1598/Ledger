@@ -5,8 +5,17 @@ from fastapi.middleware.cors import CORSMiddleware
 import models
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from sqlalchemy.ext.declarative import declarative_base
 
 app = FastAPI()
+
+SECRET_KEY = "your_secret_key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,6 +41,28 @@ class QuestionBase(BaseModel):
 class Answer(BaseModel):
     question_id: int
     choice_id: int
+    
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    
+# Utility Functions
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_user_by_email(db: Session, email: str):
+    return db.query(models.User).filter(models.User.email == email).first()
     
 def get_db():
     db = SessionLocal()
@@ -115,3 +146,25 @@ async def check_answers(answers: List[Answer], db: db_dependency):
         })
     
     return {"results": results}
+
+@app.post("/login", response_model=Token)
+def login(login_request: LoginRequest, db: Session = Depends(get_db)):
+    user = get_user_by_email(db, login_request.email)
+    if not user or not verify_password(login_request.password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Invalid email or password")
+    
+    access_token = create_access_token(data={"sub": user.email})
+    return {"access_token": access_token, "token_type": "JWT"}
+
+@app.post("/register")
+def register(email: str, password: str, db: Session = Depends(get_db)):
+    existing_user = get_user_by_email(db, email)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_password = get_password_hash(password)
+    new_user = models.User(email=email, hashed_password=hashed_password)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"message": "User registered successfully"}
