@@ -156,15 +156,19 @@ def login(login_request: LoginRequest, db: Session = Depends(get_db)):
     access_token = create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "JWT"}
 
+from fastapi import FastAPI, Form, HTTPException, Depends
+from sqlalchemy.orm import Session
+
 @app.post("/register")
-def register(email: str, password: str, db: Session = Depends(get_db)):
+def register(email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
     existing_user = get_user_by_email(db, email)
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
+
     hashed_password = get_password_hash(password)
     new_user = models.User(email=email, hashed_password=hashed_password)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
     return {"message": "User registered successfully"}
