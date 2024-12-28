@@ -29,6 +29,10 @@ class QuestionBase(BaseModel):
     question_text: str
     choices: List[ChoiceBase]
     
+class Answer(BaseModel):
+    question_id: int
+    choice_id: int
+    
 def get_db():
     db = SessionLocal()
     try:
@@ -49,12 +53,18 @@ async def create_questions(question: QuestionBase, db: db_dependency):
         db.add(db_choice)
     db.commit()
     
-@app.get("/questions/{question_id}")
-async def read_question(question_id:int, db: db_dependency):
-    result = db.query(models.Questions).filter(models.Questions.id == question_id).first()
-    if not result:
-        raise HTTPException(status_code=404, detail='Question is not found')
-    return result
+@app.get("/questions")
+def read_questions(db: Session = Depends(get_db)):
+    questions = db.query(models.Questions).all()
+    results = []
+    for question in questions:
+        choices = db.query(models.Choices).filter(models.Choices.question_id == question.id).all()
+        results.append({
+            "id": question.id,
+            "question_text": question.question_text,
+            "choices": [{"id": c.id, "choice_text": c.choice_text, "is_correct": c.is_correct} for c in choices]
+        })
+    return results
 
 @app.get("/choices/{question_id}")
 async def read_choices(question_id:int, db: db_dependency):
@@ -62,3 +72,46 @@ async def read_choices(question_id:int, db: db_dependency):
     if not result:
         raise HTTPException(status_code=404, detail='Choices is not found')
     return result
+
+@app.post("/submit-answers")
+async def submit_answers(answers: List[Answer], db: db_dependency):
+    for answer in answers:
+        db_answer = models.Answers(
+            question_id=answer.question_id,
+            choice_id=answer.choice_id
+        )
+        db.add(db_answer)
+    db.commit()
+    return {"message": "Answers saved successfully"}
+
+@app.post("/check-answers")
+async def check_answers(answers: List[Answer], db: db_dependency):
+    results = []
+    
+    for answer in answers:
+        # Check if the selected choice is correct
+        choice = db.query(models.Choices).filter(models.Choices.id == answer.choice_id).first()
+        if choice is None:
+            raise HTTPException(status_code=404, detail=f"Choice {answer.choice_id} not found.")
+        
+        # Get the correct answer for the question
+        correct_choice = db.query(models.Choices).filter(
+            models.Choices.question_id == answer.question_id, 
+            models.Choices.is_correct == True
+        ).first()
+        
+        if correct_choice is None:
+            raise HTTPException(status_code=404, detail=f"No correct choice found for question {answer.question_id}.")
+        
+        # Compare the selected choice with the correct answer
+        is_correct = choice.id == correct_choice.id
+        
+        # Store the result for the user
+        results.append({
+            "question_id": answer.question_id,
+            "selected_choice": choice.choice_text,
+            "correct_choice": correct_choice.choice_text,
+            "is_correct": is_correct
+        })
+    
+    return {"results": results}
